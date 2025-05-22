@@ -61,7 +61,10 @@ D=M
 A=M
 M=D
 // for-end SUM_END
-@SUM_END
+@ARG
+D=M
+@0
+A=D+A
 M=M-1
 @SUM_END_LOOP_START
 0;JMP

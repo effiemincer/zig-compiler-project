@@ -311,8 +311,8 @@ pub const CodeWriter = struct {
     pub fn writeForEndLoop(self: *CodeWriter, label: []const u8, allocator: std.mem.Allocator) ![]const u8 {
         _ = self;
         return std.fmt.allocPrint(allocator,
-            "// for-end {s}\n@{s}\nM=M-1\n@{s}_LOOP_START\n0;JMP\n({s}_END)\n",
-            .{ label, label, label, label }
+            "// for-end {s}\n@ARG\nD=M\n@0\nA=D+A\nM=M-1\n@{s}_LOOP_START\n0;JMP\n({s}_END)\n",
+            .{ label, label, label }
         );
     }
 
