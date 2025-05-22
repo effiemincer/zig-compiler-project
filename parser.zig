@@ -43,17 +43,21 @@ pub const CommandType = enum {
     function,
     call,
     returnCommand,
+
+    // For Loop
+    forLoop,
+    forEndLoop,
 };
 
 /// `Parser` reads and processes VM commands from a file.
 pub const Parser = struct {
-    lines: []const [4][]const u8,    // Array of parsed lines: each with up to 3 parts (command, arg1, arg2)
+    lines: []const [5][]const u8,    // Array of parsed lines: each with up to 3 parts (command, arg1, arg2)
     current_index: usize,            // Current line index being processed
     current_command: CommandType,    // Type of current command (updated via advance)
 
     pub fn newParser(files: []std.fs.File, fileNames: [][]const u8) !Parser {
         const allocator = std.heap.page_allocator;
-        var lines_list = std.ArrayList([4][]const u8).init(allocator);
+        var lines_list = std.ArrayList([5][]const u8).init(allocator);
 
         var i: usize = 0;
 
@@ -74,11 +78,11 @@ pub const Parser = struct {
 
                 const line_no_comment = trimComments(trimmed);
                 var it = std.mem.tokenizeAny(u8, line_no_comment, " \n");
-                var row: [4][]const u8 = undefined;
+                var row: [5][]const u8 = undefined;
                 var j: usize = 0;
 
                 while (it.next()) |word| {
-                    if (j == 3) {
+                    if ((j == 3 and !std.mem.eql(u8, row[0], "for")) or (j == 4 and std.mem.eql(u8, row[0], "for"))) {     //either supposed to be 3 word line or for loop and supposed to be 4
                         print("ERROR: One of the lines in a VM file was too long.\n", .{});
                         break;
                     }
@@ -91,7 +95,7 @@ pub const Parser = struct {
                 while (j < 3) : (j += 1) {
                     row[j] = "";
                 }
-                row[3] = fileNames[i];
+                row[4] = fileNames[i];
 
                 try lines_list.append(row);
             }
@@ -165,12 +169,16 @@ pub const Parser = struct {
             return CommandType.function;
         } else if (std.mem.eql(u8, command, "return")) {
             return CommandType.returnCommand;
+        } else if (std.mem.eql(u8, command, "for")) {
+            return CommandType.forLoop;
+        } else if (std.mem.eql(u8, command, "for-end")) {
+            return CommandType.forEndLoop;
         } else {
             return CommandType.placeholder;
         }
     }
 
-    pub fn getCurrentLine(self: *Parser) *const [4][]const u8 {
+    pub fn getCurrentLine(self: *Parser) *const [5][]const u8 {
         return &self.lines[self.current_index];
     }
 

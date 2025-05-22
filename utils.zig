@@ -190,6 +190,20 @@ pub fn createNewLines(
         .returnCommand => {
             return writer.writeReturn(allocator);
         },
+        // For Loop commands
+        .forLoop => {
+            const currLine = parser.getCurrentLine();
+            const label = currLine[1]; // e.g., "SUM_END"
+            const segment = currLine[2]; // e.g., "argument"
+            const index = try std.fmt.parseInt(i32, currLine[3], 10);
+            return writer.writeForLoop(label, segment, index, allocator);
+        },
+        .forEndLoop => {
+            const currLine = parser.getCurrentLine();
+            const label = currLine[1]; // e.g., "SUM_END"
+            return writer.writeForEndLoop(label, allocator);
+        },
+
         // Error handling
         else => {
             print("Unsupported command type encountered.\n", .{});

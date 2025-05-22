@@ -291,6 +291,31 @@ pub const CodeWriter = struct {
 
         return asmText.toOwnedSlice();
     }
+
+    pub fn writeForLoop(self: *CodeWriter, label: []const u8, segment: []const u8, index: i32, allocator: std.mem.Allocator) ![]const u8 {
+        _ = self;
+
+        // converts segment to actual asm code (i.e. argument --> ARG)
+        const segSymbol = if (std.mem.eql(u8, segment, "local")) "LCL"
+        else if (std.mem.eql(u8, segment, "argument")) "ARG"
+            else if (std.mem.eql(u8, segment, "this")) "THIS"
+                else if (std.mem.eql(u8, segment, "that")) "THAT"
+                    else return error.InvalidSegment;
+
+        return std.fmt.allocPrint(allocator,
+            "// for {s} {s} {d}\n({s}_LOOP_START)\n@{s}\nD=M\n@{d}\nA=D+A\nD=M\n@{s}_END\nD;JEQ\n",
+            .{ label, segment, index, label, segSymbol, index, label }
+        );
+    }
+
+    pub fn writeForEndLoop(self: *CodeWriter, label: []const u8, allocator: std.mem.Allocator) ![]const u8 {
+        _ = self;
+        return std.fmt.allocPrint(allocator,
+            "// for-end {s}\n@{s}\nM=M-1\n@{s}_LOOP_START\n0;JMP\n({s}_END)\n",
+            .{ label, label, label, label }
+        );
+    }
+
 };
 
 
