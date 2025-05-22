@@ -201,7 +201,7 @@ pub fn createNewLines(
         .forEndLoop => {
             const currLine = parser.getCurrentLine();
             const label = currLine[1]; // e.g., "SUM_END"
-            return writer.writeForEndLoop(label, allocator);
+            return writer.writeForEndLoop(label, allocator, "argument");
         },
 
         // Error handling
