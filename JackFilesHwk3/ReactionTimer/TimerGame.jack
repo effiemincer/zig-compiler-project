@@ -1,0 +1,152 @@
+// TimerGame.jack
+class TimerGame {
+    field int seed;
+    field int counter;
+
+    constructor TimerGame new() {
+        // Initialize seed with a fixed value since we can't use time
+        let seed = 12345;
+        let counter = 0;
+        return this;
+    }
+
+    method void start() {
+        var boolean keepPlaying;
+        var char key;
+        var boolean waitingForKey;
+
+        let keepPlaying = true;
+
+        while (keepPlaying) {
+            if (playRound()) {
+                do Output.println();
+                do Output.printString("Press any key to play again...");
+                do Output.println();
+
+                // Wait for key press to continue
+                let waitingForKey = true;
+                while (waitingForKey) {
+                    let key = Keyboard.keyPressed();
+                    if (key > 0) {
+                        // Clear the key press
+                        while (Keyboard.keyPressed() > 0) {
+                            // Wait for key release
+                        }
+                        // Clear screen before starting new game
+                        do Screen.clearScreen();
+                        let waitingForKey = false; // Exit the key waiting loop
+                    }
+                }
+            } else {
+                let keepPlaying = false; // Exit the game
+            }
+        }
+
+        return;
+    }
+
+    method boolean playRound() {
+        var int randomDelay;
+        var char key;
+        var int reactionCounter;
+        var boolean gameActive;
+
+        do Output.printString("WAIT...");
+        do Output.println();
+
+        // Generate random delay between 100-1100 (arbitrary units)
+        let randomDelay = 100 + getRandom(1000);
+
+        let gameActive = true;
+
+        // Delay loop with early press detection
+        if (~delayLoopWithKeyCheck(randomDelay)) {
+            do Output.printString("YOU LOSE! You pressed too early!");
+            do Output.println();
+            return true; // Want to play again
+        }
+
+        do Output.printString("GO!");
+        do Output.println();
+
+        let reactionCounter = 0;
+
+        // Wait for key press and count loop iterations as rough timing
+        while (gameActive) {
+            let key = Keyboard.keyPressed();
+            if (key > 0) {
+                do Output.printString("Reaction speed score: ");
+                do Output.printInt(reactionCounter);
+                do Output.println();
+                do Output.printString("(Lower score = faster reaction)");
+                do Output.println();
+
+                // Clear the key press
+                while (Keyboard.keyPressed() > 0) {
+                    // Wait for key release
+                }
+
+                return true; // Want to play again
+            }
+            let reactionCounter = reactionCounter + 1;
+
+            // Prevent counter overflow
+            if (reactionCounter > 30000) {
+                do Output.printString("Too slow! Try again.");
+                do Output.println();
+                return true; // Want to play again
+            }
+        }
+
+        return false; // This shouldn't be reached
+    }
+
+    method boolean delayLoopWithKeyCheck(int duration) {
+        var int i, j;
+        var char key;
+        let i = 0;
+        while (i < duration) {
+            // Check for early key press during delay
+            let key = Keyboard.keyPressed();
+            if (key > 0) {
+                return false; // Early press detected
+            }
+
+            let j = 0;
+            while (j < 100) {  // Inner loop for more delay
+                let j = j + 1;
+            }
+            let i = i + 1;
+        }
+        return true; // No early press
+    }
+
+    method int getRandom(int max) {
+        // Linear Congruential Generator with smaller constants
+        // Formula: seed = (a * seed + c) mod m
+        var int a, c, m;
+        let a = 1103;  // Small multiplier that works well
+        let c = 12345; // Small increment
+        let m = 32767; // 2^15 - 1, max positive int
+
+        // Add counter to seed for more variation
+        let seed = seed + counter;
+        let counter = counter + 1;
+
+        // Update seed
+        let seed = (a * seed) + c;
+        
+        // Keep seed positive and within bounds
+        if (seed < 0) {
+            let seed = -seed;
+        }
+        let seed = seed - ((seed / m) * m); // Manual modulo operation
+        
+        // Scale to desired range [0, max)
+        return seed - ((seed / max) * max);
+    }
+
+    method void dispose() {
+        return;
+    }
+}

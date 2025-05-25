@@ -1,0 +1,9 @@
+class Main {
+    function void main() {
+        var TimerGame game;
+        let game = TimerGame.new();
+        do game.start();
+        do game.dispose();
+        return;
+    }
+}
