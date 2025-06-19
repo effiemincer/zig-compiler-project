@@ -112,8 +112,8 @@ pub fn createNewLines(
     switch (cmdType) {
     // Arithmetic Binary Operations
         .add => {
-        return writer.writeAdd();
-    },
+            return writer.writeAdd();
+        },
         .sub => {
             return writer.writeSub();
         },

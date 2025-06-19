@@ -1,0 +1,389 @@
+const std = @import("std");
+const tokenizer = @import("./JackTokenizer.zig");
+const Tokenizer = tokenizer.Tokenizer;
+const TokenType = tokenizer.TokenType;
+const Token = tokenizer.Token;
+const mainUtils = @import("utils.zig");
+const write_xml = mainUtils.write_xml;
+
+pub const Parser = struct {
+    tokens: Tokenizer,
+    currentToken: Token,
+    indentation: usize,
+    writer: std.fs.File.Writer,
+
+    // 'class' className '{' classVarDec* subroutineDec* '}'
+    pub fn parseClass(self: *Parser) void {
+        self.writeTag("class");
+        defer self.writeTagEnd("class");
+        self.eat(.keyword, "class");
+        self.eatType(.identifier); // className
+        self.eat(.symbol, "{");
+        while (self.peekTokenList(&.{ "static", "field" })) {
+            self.parseClassVarDec();
+        }
+        while (self.peekTokenList(&.{ "constructor", "function", "method" })) {
+            self.parseSubroutineDec();
+        }
+        self.eat(.symbol, "}");
+    }
+
+    // ('static' | 'field' ) type varName (',' varName)* ';'
+    fn parseClassVarDec(self: *Parser) void {
+        self.writeTag("classVarDec");
+        defer self.writeTagEnd("classVarDec");
+        self.eatList(&.{ "static", "field" });
+        self.writeToken(); // type
+        self.eatType(.identifier); // varName
+        while (self.tryEatToken(.symbol, ",")) {
+            self.eatType(.identifier); // varName
+        }
+        self.eat(.symbol, ";");
+    }
+
+    // ('constructor' | 'function' | 'method') ('void' | type) subroutineName '('parameterList ')' subroutineBody
+    fn parseSubroutineDec(self: *Parser) void {
+        self.writeTag("subroutineDec");
+        defer self.writeTagEnd("subroutineDec");
+        self.eatList(&.{ "constructor", "function", "method" });
+        self.writeToken(); // type
+        self.eatType(.identifier); // subroutineName
+        self.eat(.symbol, "(");
+        self.parseParameterList();
+        self.eat(.symbol, ")");
+        self.parseSubroutineBody();
+    }
+
+    // ( (type varName) (',' type varName)*)?
+    fn parseParameterList(self: *Parser) void {
+        self.writeTag("parameterList");
+        defer self.writeTagEnd("parameterList");
+        if (self.peekToken(.symbol, ")")) {
+            return;
+        }
+        self.writeToken(); // type
+        self.eatType(.identifier); // varName
+        while (self.tryEatToken(.symbol, ",")) {
+            self.writeToken(); // type
+            self.eatType(.identifier); // varName
+        }
+    }
+
+    // '{' varDec* statements '}'
+    fn parseSubroutineBody(self: *Parser) void {
+        self.writeTag("subroutineBody");
+        defer self.writeTagEnd("subroutineBody");
+        self.eat(.symbol, "{");
+        while (self.peekToken(.keyword, "var")) {
+            self.parseVarDec();
+        }
+        self.parseStatements();
+        self.eat(.symbol, "}");
+    }
+
+    // 'var' type varName (',' varName)* ';
+    fn parseVarDec(self: *Parser) void {
+        self.writeTag("varDec");
+        defer self.writeTagEnd("varDec");
+        self.eat(.keyword, "var");
+        self.writeToken(); // type
+        self.eatType(.identifier); // varName
+        while (self.tryEatToken(.symbol, ",")) {
+            self.eatType(.identifier); // varName
+        }
+        self.eat(.symbol, ";");
+    }
+
+    // letStatement | ifStatement | whileStatement | doStatement | returnStatement
+    fn parseStatements(self: *Parser) void {
+        self.writeTag("statements");
+        defer self.writeTagEnd("statements");
+        while (self.peekTokenList(&.{ "let", "if", "while", "do", "return" })) {
+            if (self.peekToken(.keyword, "let")) {
+                self.parseLet();
+            } else if (self.peekToken(.keyword, "if")) {
+                self.parseIf();
+            } else if (self.peekToken(.keyword, "while")) {
+                self.parseWhile();
+            } else if (self.peekToken(.keyword, "do")) {
+                self.parseDo();
+            } else if (self.peekToken(.keyword, "return")) {
+                self.parseReturn();
+            }
+        }
+    }
+
+    // 'let' varName ('[' expression ']')? '=' expression ';'
+    fn parseLet(self: *Parser) void {
+        self.writeTag("letStatement");
+        defer self.writeTagEnd("letStatement");
+        self.eat(.keyword, "let");
+        self.eatType(.identifier); // varName
+        if (self.tryEatToken(.symbol, "[")) {
+            self.parseExpression();
+            self.eat(.symbol, "]");
+        }
+        self.eat(.symbol, "=");
+        self.parseExpression();
+        self.eat(.symbol, ";");
+    }
+
+    // 'if' '(' expression ')' '{' statements '}' ( 'else' '{' statements '}' )?
+    fn parseIf(self: *Parser) void {
+        self.writeTag("ifStatement");
+        defer self.writeTagEnd("ifStatement");
+        self.eat(.keyword, "if");
+        self.eat(.symbol, "(");
+        self.parseExpression();
+        self.eat(.symbol, ")");
+        self.eat(.symbol, "{");
+        self.parseStatements();
+        self.eat(.symbol, "}");
+        if (self.tryEatToken(.keyword, "else")) {
+            self.eat(.symbol, "{");
+            self.parseStatements();
+            self.eat(.symbol, "}");
+        }
+    }
+
+    // 'while' '(' expression ')' '{' statements '}'
+    fn parseWhile(self: *Parser) void {
+        self.writeTag("whileStatement");
+        defer self.writeTagEnd("whileStatement");
+        self.eat(.keyword, "while");
+        self.eat(.symbol, "(");
+        self.parseExpression();
+        self.eat(.symbol, ")");
+        self.eat(.symbol, "{");
+        self.parseStatements();
+        self.eat(.symbol, "}");
+    }
+
+    // 'do' subroutineCall ';'
+    fn parseDo(self: *Parser) void {
+        self.writeTag("doStatement");
+        defer self.writeTagEnd("doStatement");
+        self.eat(.keyword, "do");
+        self.parseSubroutineCall();
+        self.eat(.symbol, ";");
+    }
+
+    // subroutineName '(' expressionList ')' | ( className | varName) '.' subroutineName '(' expressionList ')'
+    fn parseSubroutineCall(self: *Parser) void {
+        self.eatType(.identifier); // subroutineName
+        if (self.tryEatToken(.symbol, "(")) {
+            self.parseExpressionList();
+            self.eat(.symbol, ")");
+        } else if (self.tryEatToken(.symbol, ".")) {
+            self.eatType(.identifier); // subroutineName
+            self.eat(.symbol, "(");
+            self.parseExpressionList();
+            self.eat(.symbol, ")");
+        }
+    }
+
+    // 'return' expression? ';'
+    fn parseReturn(self: *Parser) void {
+        self.writeTag("returnStatement");
+        defer self.writeTagEnd("returnStatement");
+        self.eat(.keyword, "return");
+        if (!self.peekToken(.symbol, ";")) {
+            self.parseExpression();
+        }
+        self.eat(.symbol, ";");
+    }
+
+    // term (op term)*
+    fn parseExpression(self: *Parser) void {
+        self.writeTag("expression");
+        defer self.writeTagEnd("expression");
+        self.parseTerm();
+        while (self.tryEatOp()) {
+            self.parseTerm();
+        }
+    }
+
+    // integerConstant | stringConstant | keywordConstant | varName | varName '[' expression ']' | subroutineCall | '(' expression ')' | unaryOp term
+    fn parseTerm(self: *Parser) void {
+        self.writeTag("term");
+        defer self.writeTagEnd("term");
+        if (self.tryEatToken(.symbol, "(")) {
+            self.parseExpression();
+            self.eat(.symbol, ")");
+        } else if (self.tryEatToken(.symbol, "-") or self.tryEatToken(.symbol, "~")) { // unaryOp
+            self.parseTerm();
+        } else if (self.peekKeywordConstant() or self.peekTokenType(.stringConstant) or self.peekTokenType(.integerConstant)) {
+            self.writeToken(); // keywordConstant | stringConstant | integerConstant
+        } else if (self.peekTokenType(.identifier)) {
+            self.eatType(.identifier); // identifier
+            if (self.tryEatToken(.symbol, "[")) {
+                self.parseExpression();
+                self.eat(.symbol, "]");
+            } else if (self.tryEatToken(.symbol, ".")) {
+                self.eatType(.identifier); // identifier
+                if (self.tryEatToken(.symbol, "(")) {
+                    self.parseExpressionList();
+                    self.eat(.symbol, ")");
+                }
+            } else if (self.tryEatToken(.symbol, "(")) {
+                self.parseExpressionList();
+                self.eat(.symbol, ")");
+            }
+        } else {
+            std.debug.panic("Inavlid expression: unexpected token {}", .{self.currentToken});
+        }
+    }
+
+    // (expression (',' expression)* )?
+    fn parseExpressionList(self: *Parser) void {
+        self.writeTag("expressionList");
+        defer self.writeTagEnd("expressionList");
+        if (self.peekToken(.symbol, ")")) {
+            return;
+        }
+        self.parseExpression();
+        while (self.tryEatToken(.symbol, ",")) {
+            self.parseExpression();
+        }
+    }
+
+    // 'true' | 'false' | 'null' | 'this'
+    fn peekKeywordConstant(self: *Parser) bool {
+        return self.peekTokenType(.keyword) and self.peekTokenList(&.{ "true", "false", "null", "this" });
+    }
+
+    // '+' | '-' | '*' | '/' | '&' | '|' | '<' | '>' | '='
+    fn tryEatOp(self: *Parser) bool {
+        const isOp = self.peekTokenType(.symbol) and (self.peekTokenList(&.{ "+", "-", "*", "/", "&", "|", "<", ">", "=" }));
+        if (isOp) {
+            self.writeToken();
+        }
+        return isOp;
+    }
+
+    // If the token exists, return true and eat it, else return false
+    fn tryEatToken(self: *Parser, tokenType: TokenType, value: []const u8) bool {
+        const isValid = self.peekToken(tokenType, value);
+        if (isValid) {
+            self.writeToken();
+        }
+        return isValid;
+    }
+
+    // Check information about the current token
+    fn peekToken(self: *Parser, tokenType: TokenType, value: []const u8) bool {
+        return self.peekTokenType(tokenType) and self.peekTokenValue(value);
+    }
+    fn peekTokenType(self: *Parser, tokenType: TokenType) bool {
+        return self.currentToken.type == tokenType;
+    }
+    fn peekTokenValue(self: *Parser, value: []const u8) bool {
+        return std.mem.eql(u8, self.currentToken.value, value);
+    }
+
+    // Check if the current token has a value that is part of the tokenList
+    fn peekTokenList(self: *Parser, tokenList: []const []const u8) bool {
+        for (tokenList) |token| {
+            if (self.peekTokenValue(token)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // These eat functions are just peek and then writeToken or error
+    fn eatList(self: *Parser, tokenList: []const []const u8) void {
+        if (!self.peekTokenList(tokenList)) {
+            std.debug.panic("Expected token of value {s} but got token {s}\n", .{ tokenList, self.currentToken.value });
+        }
+        self.writeToken();
+    }
+    fn eat(self: *Parser, tokenType: TokenType, value: []const u8) void {
+        if (!self.peekToken(tokenType, value)) {
+            std.debug.panic("Expected token of type {s} with value {s} but got {s} with value {s}\n", .{ tokenType.toString(), value, self.currentToken.type.toString(), self.currentToken.value });
+        }
+        self.writeToken();
+    }
+    fn eatType(self: *Parser, tokenType: TokenType) void {
+        if (!self.peekTokenType(tokenType)) {
+            std.debug.panic("Expected token of type {s} but got {s}\n", .{ tokenType.toString(), self.currentToken.type.toString() });
+        }
+        self.writeToken();
+    }
+
+    // fn write_xml(self: *Parser) !void {
+    //     var token = self.currentToken;
+    //     const tokenType = token.type.toString();
+    //     try self.writer.writeAll("<");
+    //     try self.writer.writeAll(tokenType);
+    //     try self.writer.writeAll("> ");
+    //
+    //     // Tiny tokenizer to do string replacement without any allocation (by writing directly to an output file)
+    //     var trailing: usize = 0;
+    //     var i: usize = 0;
+    //     while (i < token.value.len) : (i += 1) {
+    //         switch (token.value[i]) {
+    //             '&' => {
+    //                 try self.writer.writeAll(token.value[trailing..i]);
+    //                 try self.writer.writeAll("&amp;");
+    //                 trailing = i + 1;
+    //             },
+    //             '<' => {
+    //                 try self.writer.writeAll(token.value[trailing..i]);
+    //                 try self.writer.writeAll("&lt;");
+    //                 trailing = i + 1;
+    //             },
+    //             '>' => {
+    //                 try self.writer.writeAll(token.value[trailing..i]);
+    //                 try self.writer.writeAll("&gt;");
+    //                 trailing = i + 1;
+    //             },
+    //             '"' => {
+    //                 try self.writer.writeAll(token.value[trailing..i]);
+    //                 try self.writer.writeAll("&quot;");
+    //                 trailing = i + 1;
+    //             },
+    //             else => {},
+    //         }
+    //     }
+    //     try self.writer.writeAll(token.value[trailing..]);
+    //
+    //     try self.writer.writeAll(" </");
+    //     try self.writer.writeAll(tokenType);
+    //     try self.writer.writeAll(">\n");
+    // }
+    //
+    fn writeToken(self: *Parser) void {
+        self.writer.writeByteNTimes(' ', self.indentation * 2) catch return;
+        write_xml(self.writer, self.currentToken) catch return;
+        self.currentToken = self.tokens.next() orelse return;
+    }
+    fn writeTag(self: *Parser, tag: []const u8) void {
+        self.writer.writeByteNTimes(' ', self.indentation * 2) catch return;
+        self.writer.print("<{s}>\n", .{tag}) catch return;
+        self.indentation += 1;
+    }
+    fn writeTagEnd(self: *Parser, tag: []const u8) void {
+        self.indentation -= 1;
+        self.writer.writeByteNTimes(' ', self.indentation * 2) catch return;
+        self.writer.print("</{s}>\n", .{tag}) catch return;
+    }
+
+    // Used to test the tokenizer
+    fn printTokens(self: *Parser) void {
+        self.writeTag("tokens");
+        defer self.writeTagEnd("tokens");
+        while (!self.tokens.is_eof()) {
+            self.writeToken();
+        }
+    }
+};
+
+// zig build test
+test "Parser.tryEatOp" {
+    const tokens = Tokenizer{ .contents = "", .index = 0 };
+    const token = Token{ .type = .symbol, .value = "+" };
+    // Neat fact, you can pass in a stdout writer instead of a file writer (also there is something called an arraylist writer)
+    var x = Parser{ .tokens = tokens, .currentToken = token, .indentation = 0, .writer = std.io.getStdErr().writer() };
+    try std.testing.expect(x.tryEatOp());
+}
