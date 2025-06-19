@@ -46,6 +46,7 @@ pub const Tokenizer = struct {
         return self.index >= self.contents.len;
     }
 
+    // using DFA state machine mechanics to parse the token using lazy evaluation
     pub fn next(self: *Tokenizer) ?Token {
         var tokenStart: usize = 0;
         var state: State = .start;
@@ -54,28 +55,36 @@ pub const Tokenizer = struct {
             const c = self.contents[self.index];
 
             switch (state) {
+                // start state
                 .start => switch (c) {
+                    // / --> go to slash
                     '/' => state = .slash,
+                    // [0-9] --> start new token go to intConstant
                     '0'...'9' => {
                         tokenStart = self.index;
                         state = .integerConstant;
                     },
+                    // " --> start new token go to strConstant
                     '"' => {
                         tokenStart = self.index + 1;
                         state = .stringConstant;
                     },
+                    // white space do nothing continue
                     '\n', ' ', '\t' => {},
+                    // reserved tokens
                     '{', '}', '(', ')', '[', ']', '.', ',', ';', '+', '-', '*', '&', '|', '<', '>', '=', '~' => {
                         const token = self.contents[self.index..(self.index + 1)];
                         self.index += 1;
                         return Token{ .type = .symbol, .value = token };
                     },
+                    // [a-z | A-Z | _] --> start identifier
                     'a'...'z', 'A'...'Z', '_' => {
                         tokenStart = self.index;
                         state = .identifier;
                     },
                     else => {},
                 },
+                // if we are in the slash state
                 .slash => switch (c) {
                     '/' => state = .line_comment,
                     '*' => state = .block_comment,
@@ -85,10 +94,13 @@ pub const Tokenizer = struct {
                     },
                 },
                 .line_comment => switch (c) {
+                    // do nothing until hitting newline for new token parsing
                     '\n' => state = .start,
                     else => {},
                 },
+
                 .block_comment => switch (c) {
+                    // do nothing until hitting * for new token parsing
                     '*' => state = .star_in_comment,
                     else => {},
                 },
@@ -97,33 +109,41 @@ pub const Tokenizer = struct {
                     else => state = .block_comment,
                 },
                 .integerConstant => switch (c) {
+                    // continue taking in numbers
                     '0'...'9' => {},
+                    // once we hit a white space or other char save all previous numbers into one intConst token
                     else => {
                         const myToken = self.contents[tokenStart..self.index];
                         // u15 is exactly the size of Jack's integer constants, and if it overflows, throw a parser error
                         _ = std.fmt.parseInt(u15, myToken, 10) catch {
                             std.debug.panic("Integer constant out of range: {s}", .{myToken});
                         };
+                        // return int constant token and wait for next self.next call retain state and index info
                         return Token{ .type = .integerConstant, .value = myToken };
                     },
                 },
                 .stringConstant => switch (c) {
+                    // once we hit another " save everything into a string constant
                     '"' => {
                         const myToken = self.contents[tokenStart..self.index];
                         self.index += 1;
+                        // return str constant token and wait for next self.next call retain state and index info
                         return Token{ .type = .stringConstant, .value = myToken };
                     },
                     else => {},
                 },
                 .identifier => switch (c) {
                     'a'...'z', 'A'...'Z', '0'...'9', '_' => {},
+                    // once we hit a white space or another char save all previus things into a id token
                     else => {
                         const myToken = self.contents[tokenStart..self.index];
+                        // check if its one of the keywords in teh language
                         for (keywords) |keyword| {
                             if (std.mem.eql(u8, keyword, myToken)) {
                                 return Token{ .type = .keyword, .value = myToken };
                             }
                         }
+                        // else return the identifeir token
                         return Token{ .type = .identifier, .value = myToken };
                     },
                 },
@@ -132,6 +152,8 @@ pub const Tokenizer = struct {
         return null;
     }
 
+
+    // write out the token stream to a file to create XXXT.xml file
     pub fn writeTokenStreamToFile(self: *Tokenizer) !void {
         // 1) rewind so we start from the very first token
         self.index = 0;
@@ -154,45 +176,4 @@ pub const Tokenizer = struct {
         self.index = 0;
     }
 
-
-    // fn write_xml(self: *Tokenizer, token: Token) !void {
-    //     const tokenType = token.type.toString();
-    //     try self.writer.writeAll("<");
-    //     try self.writer.writeAll(tokenType);
-    //     try self.writer.writeAll("> ");
-    //
-    //     // Tiny tokenizer to do string replacement without any allocation (by writing directly to an output file)
-    //     var trailing: usize = 0;
-    //     var i: usize = 0;
-    //     while (i < token.value.len) : (i += 1) {
-    //         switch (token.value[i]) {
-    //             '&' => {
-    //                 try self.writer.writeAll(token.value[trailing..i]);
-    //                 try self.writer.writeAll("&amp;");
-    //                 trailing = i + 1;
-    //             },
-    //             '<' => {
-    //                 try self.writer.writeAll(token.value[trailing..i]);
-    //                 try self.writer.writeAll("&lt;");
-    //                 trailing = i + 1;
-    //             },
-    //             '>' => {
-    //                 try self.writer.writeAll(token.value[trailing..i]);
-    //                 try self.writer.writeAll("&gt;");
-    //                 trailing = i + 1;
-    //             },
-    //             '"' => {
-    //                 try self.writer.writeAll(token.value[trailing..i]);
-    //                 try self.writer.writeAll("&quot;");
-    //                 trailing = i + 1;
-    //             },
-    //             else => {},
-    //         }
-    //     }
-    //     try self.writer.writeAll(token.value[trailing..]);
-    //
-    //     try self.writer.writeAll(" </");
-    //     try self.writer.writeAll(tokenType);
-    //     try self.writer.writeAll(">\n");
-    // }
 };

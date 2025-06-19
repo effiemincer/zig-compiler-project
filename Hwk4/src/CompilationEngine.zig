@@ -17,14 +17,16 @@ var allocator = gpa.allocator();
 fn run_file(folder: std.fs.Dir, fileName: []const u8) !void {
     const file = try folder.openFile(fileName, .{});
     defer file.close();
+
+    // create a slice of u8 to read in the entire conents of the file
     const contents = try file.readToEndAlloc(allocator, std.math.maxInt(usize));
     defer allocator.free(contents);
 
-    // allocate enough for original name minus “.jack” + “T.xml” (net same length as fileName)
+    // create file for the Token stream
     var outFileT = try allocator.alloc(u8, fileName.len);
     defer allocator.free(outFileT);
 
-    // copy the entire original name (we’ll overwrite its old “.jack”)
+    // copy the entire original name
     std.mem.copyForwards(u8, outFileT, fileName);
 
     // overwrite the final 5 bytes (where “.jack” was) with “T.xml”
@@ -34,10 +36,11 @@ fn run_file(folder: std.fs.Dir, fileName: []const u8) !void {
         "T.xml"
     );
 
+    // create the new file in the folder
     var outputT = try folder.createFile(outFileT, .{});
 
     // Create a file with "Mine.xml" appended to the name (and .jack stripped).
-        // allocate: drop 5 (“.jack”) and add 4 (“.xml”) ⇒ net -1
+    // allocate: drop 5 (“.jack”) and add 4 (“.xml”) ⇒ net -1
     var outFile = try allocator.alloc(u8, fileName.len - 1);
     defer allocator.free(outFile);
 
@@ -55,12 +58,12 @@ fn run_file(folder: std.fs.Dir, fileName: []const u8) !void {
 
     // Build the tokenizer, and pass that structure to the parser
     var tokens = Tokenizer{ .contents = contents, .index = 0, .writer = outputT.writer() };
+    // create token stream file in xml
     try tokens.writeTokenStreamToFile();
 
     // We start with the currentToken being non-null
     const firstToken = tokens.next() orelse return;
     var myParser = Parser{ .tokens = tokens, .currentToken = firstToken, .indentation = 0, .writer = output.writer() };
-    // If you want to tokenize, just do myParser.printTokens();
     myParser.parseClass();
 }
 
@@ -72,27 +75,20 @@ pub fn main() !void {
     const stdout = std.io.getStdOut().writer();
 
     // Prompt the user for a directory path
-    try stdout.print("Enter path for file(s): ", .{});
+    try stdout.print("Enter directory path for file(s): ", .{});
 
     const fileOrFolder = readAndCleanUserInput() catch |err|{
         std.debug.print("arg failed, error: {}", .{err});
         return;
     };
-    const isFile = std.mem.endsWith(u8, fileOrFolder, ".jack");
 
-    if (isFile) {
-        // const folderPath = getFolderPath(fileOrFolder);
-        const fileName = getFileName(fileOrFolder);
-        try run_file(std.fs.cwd(), fileName);
-    } else {
-        var folder = try std.fs.openDirAbsolute(fileOrFolder,  .{.iterate = true});
+    var folder = try std.fs.openDirAbsolute(fileOrFolder,  .{.iterate = true});
 
-        defer folder.close();
-        var iterator = folder.iterate();
-        while (try iterator.next()) |entry| {
-            if (std.mem.endsWith(u8, entry.name, ".jack")) {
-                try run_file(folder, entry.name);
-            }
+    defer folder.close();
+    var iterator = folder.iterate();
+    while (try iterator.next()) |entry| {
+        if (std.mem.endsWith(u8, entry.name, ".jack")) {
+            try run_file(folder, entry.name);
         }
     }
 }
