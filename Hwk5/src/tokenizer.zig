@@ -1,3 +1,10 @@
+/// Tokenizer for Jack source code.
+/// Scans the source file character-by-character and produces tokens
+/// such as keywords, symbols, identifiers, string constants, and integer constants.
+/// Skips over line and block comments.
+/// Used as the first stage of compilation before parsing and code generation.
+
+
 const std = @import("std");
 
 pub const TokenType = enum {

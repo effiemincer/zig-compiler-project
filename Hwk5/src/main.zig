@@ -1,13 +1,15 @@
+/// Entry point and general utility functions for the compiler.
+
 const std = @import("std");
 const mainUtils = @import("utils.zig");
 
 const tokenizer = @import("./tokenizer.zig");
 const compiler = @import("./compiler.zig");
-const scope = @import("./scope.zig");
+const symbolTable = @import("./symbolTable.zig");
 const Tokenizer = tokenizer.Tokenizer;
 const Token = tokenizer.Token;
-const Parser = compiler.Compiler;
-const Scope = scope.Scope;
+const Compiler = compiler.Compiler;
+const SymbolTable = symbolTable.SymbolTable;
 
 const readAndCleanUserInput = mainUtils.readAndCleanUserInput;
 const getFileName = mainUtils.getFileName;
@@ -17,6 +19,7 @@ var gpa = std.heap.GeneralPurposeAllocator(.{}){};
 var allocator = gpa.allocator();
 
 fn run_file(folder: std.fs.Dir, fileName: []const u8) !void {
+    // Open and read file
     const file = try folder.openFile(fileName, .{});
     defer file.close();
     const contents = try file.readToEndAlloc(allocator, std.math.maxInt(usize));
@@ -31,10 +34,10 @@ fn run_file(folder: std.fs.Dir, fileName: []const u8) !void {
 
     // Build the tokenizer, and pass that structure to the parser
     var tokens = Tokenizer{ .contents = contents, .index = 0 };
-    var myParser = try Parser.init(&tokens, output.writer(), allocator);
-    defer myParser.deinit();
+    var myCompiler = try Compiler.init(&tokens, output.writer(), allocator);
+    defer myCompiler.deinit();
 
-    myParser.compileClass();
+    myCompiler.compileClass();
 }
 
 
@@ -48,12 +51,12 @@ pub fn main() !void {
     // Prompt the user for a directory path
     try stdout.print("Enter directory path for file(s): ", .{});
 
-    const fileOrFolder = readAndCleanUserInput() catch |err|{
+    const userInput = readAndCleanUserInput() catch |err|{
         std.debug.print("arg failed, error: {}", .{err});
         return;
     };
 
-    var folder = try std.fs.openDirAbsolute(fileOrFolder,  .{.iterate = true});
+    var folder = try std.fs.openDirAbsolute(userInput,  .{.iterate = true});
 
     defer folder.close();
     var iterator = folder.iterate();
