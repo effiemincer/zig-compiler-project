@@ -1,3 +1,5 @@
+/// Rachamim Seltzer: 662215912
+/// Efrem Mincer: 3246291982
 /// Symbol table manager for the compiler.
 /// Stores symbols (variables) in separate lists by kind: static, field, argument, and local.
 /// Provides functions to add, lookup, clear, and count symbols.
