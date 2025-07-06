@@ -21,7 +21,7 @@ pub const Compiler = struct {
     currentToken: Token,
     indentation: usize,
     writer: std.fs.File.Writer,
-    scope: SymbolTable,
+    symbol_table: SymbolTable,
     allocator: std.mem.Allocator,
     label_counter: u32,
 
@@ -33,14 +33,14 @@ pub const Compiler = struct {
             .tokens = tokens.*,
             .indentation = 0,
             .writer = writer,
-            .scope = SymbolTable.init(allocator),
+            .symbol_table = SymbolTable.init(allocator),
             .allocator = allocator,
             .label_counter = 0,
         };
     }
 
     pub fn deinit(self: *Compiler) void {
-        self.scope.deinit();
+        self.symbol_table.deinit();
     }
     // 'class' className '{' classVarDec* subroutineDec* '}'
     pub fn compileClass(self: *Compiler) void {
@@ -65,17 +65,17 @@ pub const Compiler = struct {
         const symbolType = self.currentToken.value;
         self.nextToken(); // type
         var symbolName = self.peekAndNextType(.identifier); // varName
-        self.scope.add(x, symbolType, symbolName);
+        self.symbol_table.add(x, symbolType, symbolName);
         while (self.trypeekAndNextToken(.symbol, ",")) {
             symbolName = self.peekAndNextType(.identifier); // varName
-            self.scope.add(x, symbolType, symbolName);
+            self.symbol_table.add(x, symbolType, symbolName);
         }
         self.peekAndNext(.symbol, ";");
     }
 
     // ('constructor' | 'function' | 'method') ('void' | type) subroutineName '('parameterList ')' '{' varDec* statements '}'
     fn compileSubroutine(self: *Compiler) void {
-        defer self.scope.clear(); // removes the locals and arguments resetting the subroutine symbol table
+        defer self.symbol_table.clear(); // removes the locals and arguments resetting the subroutine symbol table
 
         const isMethod = self.peekToken(.keyword, "method");
         const isConstructor = self.peekToken(.keyword, "constructor");
@@ -84,7 +84,7 @@ pub const Compiler = struct {
         const fname = self.peekAndNextType(.identifier); // subroutineName
         self.peekAndNext(.symbol, "(");
         if (isMethod) {
-            self.scope.add(.argument, self.class, "this");
+            self.symbol_table.add(.argument, self.class, "this");
         }
         self.compileParameterList();
         self.peekAndNext(.symbol, ")");
@@ -94,7 +94,7 @@ pub const Compiler = struct {
             self.compileVarDec();
         }
 
-        self.print("function {s}.{s} {}", .{ self.class, fname, self.scope.varCount() });
+        self.print("function {s}.{s} {}", .{ self.class, fname, self.symbol_table.varCount() });
 
         if (isMethod) {
             // At the start of a method, we set *pointer to the first parameter from the arguments (sets the variable "this" from the value passed in)
@@ -102,7 +102,7 @@ pub const Compiler = struct {
             self.print("pop pointer 0", .{});
         } else if (isConstructor) {
             // At the start of a constructor, we allocate space for the fields and sets this to the address of the allocated space
-            self.print("push constant {}", .{self.scope.classVarCount()});
+            self.print("push constant {}", .{self.symbol_table.classVarCount()});
             self.print("call Memory.alloc 1", .{});
             self.print("pop pointer 0", .{});
         }
@@ -119,12 +119,12 @@ pub const Compiler = struct {
         var symbolType = self.currentToken.value;
         self.nextToken(); // type
         var symbolName = self.peekAndNextType(.identifier); // varName
-        self.scope.add(.argument, symbolType, symbolName);
+        self.symbol_table.add(.argument, symbolType, symbolName);
         while (self.trypeekAndNextToken(.symbol, ",")) {
             symbolType = self.currentToken.value;
             self.nextToken(); // type
             symbolName = self.peekAndNextType(.identifier); // varName
-            self.scope.add(.argument, symbolType, symbolName);
+            self.symbol_table.add(.argument, symbolType, symbolName);
         }
     }
 
@@ -134,10 +134,10 @@ pub const Compiler = struct {
         const symbolType = self.currentToken.value;
         self.nextToken(); // type
         var symbolName = self.peekAndNextType(.identifier); // varName
-        self.scope.add(.local, symbolType, symbolName);
+        self.symbol_table.add(.local, symbolType, symbolName);
         while (self.trypeekAndNextToken(.symbol, ",")) {
             symbolName = self.peekAndNextType(.identifier); // varName
-            self.scope.add(.local, symbolType, symbolName);
+            self.symbol_table.add(.local, symbolType, symbolName);
         }
         self.peekAndNext(.symbol, ";");
     }
@@ -164,7 +164,7 @@ pub const Compiler = struct {
         self.peekAndNext(.keyword, "let");
         const symbolName = self.peekAndNextType(.identifier); // varName
         if (self.trypeekAndNextToken(.symbol, "[")) {
-            var symbol = self.scope.lookup(symbolName) orelse std.debug.panic("Symbol `{s}` not found", .{symbolName});
+            var symbol = self.symbol_table.lookup(symbolName) orelse std.debug.panic("Symbol `{s}` not found", .{symbolName});
             self.compileExpression();
             self.print("push {s} {}", .{ symbol.kind.toString(), symbol.index });
             self.print("add", .{});
@@ -182,7 +182,7 @@ pub const Compiler = struct {
         } else {
             self.peekAndNext(.symbol, "=");
             self.compileExpression();
-            var symbol = self.scope.lookup(symbolName) orelse return;
+            var symbol = self.symbol_table.lookup(symbolName) orelse return;
             self.print("pop {s} {}", .{ symbol.kind.toString(), symbol.index });
         }
         self.peekAndNext(.symbol, ";");
@@ -258,7 +258,7 @@ pub const Compiler = struct {
             self.peekAndNext(.symbol, "(");
             var className = name;
             var numberOfArguments: u32 = 0;
-            if (self.scope.lookup(name)) |symbol| {
+            if (self.symbol_table.lookup(name)) |symbol| {
                 self.print("push {s} {}", .{ symbol.kind.toString(), symbol.index });
                 numberOfArguments += 1;
                 className = symbol.symbol.type;
@@ -336,7 +336,7 @@ pub const Compiler = struct {
         } else if (self.peekTokenType(.identifier)) {
             const name = self.peekAndNextType(.identifier);
             if (self.trypeekAndNextToken(.symbol, "[")) {
-                var x = self.scope.lookup(name) orelse return;
+                var x = self.symbol_table.lookup(name) orelse return;
                 self.print("push {s} {}", .{ x.kind.toString(), x.index });
                 self.compileExpression();
                 self.peekAndNext(.symbol, "]");
@@ -346,7 +346,7 @@ pub const Compiler = struct {
             } else if (self.peekToken(.symbol, ".") or self.peekToken(.symbol, "(")) {
                 self.compileSubroutineCall(name);
             } else {
-                var x = self.scope.lookup(name) orelse std.debug.panic("Symbol `{s}` not found", .{name});
+                var x = self.symbol_table.lookup(name) orelse std.debug.panic("Symbol `{s}` not found", .{name});
                 self.print("push {s} {}", .{ x.kind.toString(), x.index });
             }
         } else {
