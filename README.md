@@ -53,30 +53,6 @@ zig-compiler-project/
 
 ---
 
-## 🧪 Running & Testing
-
-### Build the compiler:
-
-```bash
-zig build
-```
-
-### Run the compiler on a Jack source directory:
-
-```bash
-zig build run -- /path/to/JackProject
-```
-
-This will recursively compile all `.jack` files into `.asm` output in the target directory.
-
-### Run tests:
-
-```bash
-zig build test
-```
-
----
-
 ## 📚 Background
 
 This compiler is part of the [Nand2Tetris](https://www.nand2tetris.org/) course, a renowned computer science curriculum that teaches the full stack — from logic gates to high-level languages.
@@ -90,28 +66,14 @@ Implementing the compiler in **Zig** gave me hands-on experience with:
 
 ---
 
-## 🧵 Future Work
-
-* Add symbol table and support for class-level scoping
-* Implement Jack standard library
-* Add CLI options for individual compilation stages
-* Improve error handling and diagnostics
-
----
-
-## 📸 Demo
-
-<p align="center">
-  <img src="https://raw.githubusercontent.com/effiemincer/zig-compiler-project/main/assets/compilation-pipeline.png" alt="Jack to VM to Hack Compilation Pipeline" width="500">
-</p>
-
----
-
 ## 🧑‍💻 Author
 
 **Effie Mincer**
 Computer Science @ JCT | Systems Programming Enthusiast
 [effiemincer.dev](https://www.effiemincer.dev)
+
+**Rachamim Seltzer**
+Computer Science @ JCT
 
 ---
 
