@@ -74,10 +74,3 @@ Computer Science @ JCT | Systems Programming Enthusiast
 
 **Rachamim Seltzer**
 Computer Science @ JCT
-
----
-
-## 🪪 License
-
-MIT — See [`LICENSE`](./LICENSE)
----
