@@ -66,7 +66,7 @@ Implementing the compiler in **Zig** gave me hands-on experience with:
 
 ---
 
-## 🧑‍💻 Author
+## 🧑‍💻 Authors
 
 **Effie Mincer**
 Computer Science @ JCT | Systems Programming Enthusiast
